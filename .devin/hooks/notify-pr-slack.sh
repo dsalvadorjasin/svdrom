@@ -4,6 +4,8 @@ set -euo pipefail
 hook_input=$(cat)
 
 HOOK_INPUT=$hook_input python3 - <<'PY' || true
+from __future__ import annotations
+
 import hashlib
 import json
 import os
@@ -17,34 +19,53 @@ import urllib.request
 SHELL_SEPARATORS = {";", "&&", "||", "|", "&", "\n", "(", ")", "{", "}"}
 GH_GLOBAL_FLAGS_WITH_VALUE = {"-R", "--repo"}
 COMMAND_WRAPPERS = {"command", "env", "exec", "nohup", "time", "sudo"}
+WRAPPER_FLAGS_WITH_VALUE = {"-u", "-g", "-C", "-S", "-D", "-P", "-h", "-p", "-r", "-t"}
+ENV_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 
 
-def split_segments(command):
-    """Split a shell command line into the argv of each simple command."""
-    lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|(){}")
+def split_segments(command: str) -> list[tuple[str, list[str]]]:
+    """Split a shell command line into (preceding operator, argv) per simple command."""
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|(){}\n")
     lexer.whitespace_split = True
     lexer.whitespace = " \t\r"
     lexer.commenters = ""
-    segments, current = [], []
+    segments: list[tuple[str, list[str]]] = []
+    op = ""
+    current: list[str] = []
     for token in lexer:
-        if token in SHELL_SEPARATORS or all(c in ";&|" for c in token):
+        if token in SHELL_SEPARATORS or all(c in ";&|\n" for c in token):
             if current:
-                segments.append(current)
+                segments.append((op, current))
+            op = token
             current = []
             continue
         current.append(token)
     if current:
-        segments.append(current)
+        segments.append((op, current))
     return segments
 
 
-def gh_pr_create_args(argv):
-    """Return the args after `gh [global flags] pr create`, or None."""
+def skip_wrappers(argv: list[str]) -> int:
+    """Return the index of the wrapped executable after env assignments/wrappers."""
     i = 0
-    while i < len(argv) and (
-        argv[i] in COMMAND_WRAPPERS or re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", argv[i])
-    ):
-        i += 1
+    while i < len(argv):
+        if ENV_ASSIGNMENT.match(argv[i]):
+            i += 1
+        elif argv[i] in COMMAND_WRAPPERS:
+            i += 1
+            while i < len(argv) and argv[i].startswith("-"):
+                if argv[i] == "--":
+                    i += 1
+                    break
+                i += 2 if argv[i] in WRAPPER_FLAGS_WITH_VALUE else 1
+        else:
+            break
+    return i
+
+
+def gh_pr_create_args(argv: list[str]) -> list[str] | None:
+    """Return the args after `gh [global flags] pr create`, or None."""
+    i = skip_wrappers(argv)
     if i >= len(argv) or os.path.basename(argv[i]) != "gh":
         return None
     i += 1
@@ -58,7 +79,7 @@ def gh_pr_create_args(argv):
     return argv[i + 2 :]
 
 
-def extract_title(args):
+def extract_title(args: list[str]) -> str | None:
     for j, arg in enumerate(args):
         if arg in ("-t", "--title") and j + 1 < len(args):
             return args[j + 1]
@@ -97,11 +118,15 @@ try:
     except ValueError:
         sys.exit(0)
     create_args = None
-    for argv in segments:
+    for idx, (_, argv) in enumerate(segments):
         create_args = gh_pr_create_args(argv)
         if create_args is not None:
             break
     if create_args is None:
+        sys.exit(0)
+    # The hook only sees the whole invocation's status/output, so only trust
+    # them when nothing but a pipeline consumer runs after `gh pr create`.
+    if any(op != "|" for op, _ in segments[idx + 1 :]):
         sys.exit(0)
 
     response = payload.get("tool_response") or {}
@@ -109,10 +134,10 @@ try:
         sys.exit(0)
 
     output = response.get("output") or ""
-    m = re.search(r"https://github\.com/[^\s]+/pull/\d+", output)
-    if not m:
+    urls = re.findall(r"https://github\.com/[^\s]+/pull/\d+", output)
+    if not urls:
         sys.exit(0)
-    pr_ref = m.group(0)
+    pr_ref = urls[-1]
 
     marker_dir = os.path.join(tempfile.gettempdir(), "devin-pr-slack-notified")
     os.makedirs(marker_dir, exist_ok=True)

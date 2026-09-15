@@ -86,6 +86,10 @@ def run_hook(receiver: _Receiver, tmp_path: Path):
         ("gh -R acme/widgets pr create --title=Fix", "Fix"),
         ("git push -u origin x && gh pr create -t Chained --fill", "Chained"),
         ("cd repo; GH_TOKEN=x gh pr create --fill", None),
+        ("git push\ngh pr create --fill", None),
+        ("sudo -u deploy gh pr create --fill", None),
+        ("env -u FOO -- gh pr create -t Wrapped", "Wrapped"),
+        ("gh pr create --fill | tee pr.log", None),
     ],
 )
 def test_posts_for_gh_pr_create(run_hook, receiver, command, title) -> None:
@@ -104,6 +108,9 @@ def test_posts_for_gh_pr_create(run_hook, receiver, command, title) -> None:
         "gh pr view 42",
         "gh pr create-ish",
         "ls",
+        "gh pr create || gh pr view 7",
+        "gh pr create; echo done",
+        "gh pr create && gh pr view 7",
     ],
 )
 def test_ignores_non_creating_commands(run_hook, receiver, command) -> None:
@@ -115,6 +122,15 @@ def test_ignores_failed_or_urlless_commands(run_hook, receiver) -> None:
     run_hook("gh pr create", success=False)
     run_hook("gh pr create", output="no url here")
     assert receiver.posts == []
+
+
+def test_uses_last_pr_url_in_output(run_hook, receiver) -> None:
+    run_hook(
+        "gh pr create",
+        output="see https://github.com/acme/widgets/pull/1\n" + PR_URL + "\n",
+    )
+    assert PR_URL in receiver.posts[0]["text"]
+    assert "pull/1" not in receiver.posts[0]["text"]
 
 
 def test_deduplicates_per_pr(run_hook, receiver) -> None:
