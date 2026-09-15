@@ -66,7 +66,7 @@ def make_dataarray(matrix_type: str, time_dim_pos: int = 1) -> xr.DataArray:
 
 
 @pytest.mark.parametrize("svd_algorithm", ["tsqr", "randomized"])
-def test_basic(svd_algorithm):
+def test_basic(svd_algorithm: str) -> None:
     """Test basic functionality of POD, using the two backend
     SVD algorithms.
     """
@@ -89,6 +89,10 @@ def test_basic(svd_algorithm):
     X = make_dataarray("tall-and-skinny")
     pod.fit(X)
 
+    assert pod.modes is not None
+    assert pod.time_coeffs is not None
+    assert pod.energy is not None
+    assert pod._s is not None
     assert isinstance(
         pod.modes, xr.DataArray
     ), f"modes should be an xarray DataArray, got {type(pod.modes)}."
@@ -130,7 +134,7 @@ def test_basic(svd_algorithm):
 
 
 @pytest.mark.parametrize("matrix_type", ["tall-and-skinny", "short-and-fat", "square"])
-def test_pod_shapes_and_dims(matrix_type):
+def test_pod_shapes_and_dims(matrix_type: str) -> None:
     """Test that POD modes and time coefficients have the correct shapes and dims."""
     X = make_dataarray(matrix_type)
     n_space, n_time = X.shape
@@ -160,7 +164,7 @@ def test_pod_shapes_and_dims(matrix_type):
 
 
 @pytest.mark.parametrize("algorithm", ["tsqr", "randomized"])
-def test_orthogonality(algorithm):
+def test_orthogonality(algorithm: str) -> None:
     """Test orthogonality of POD modes and time coefficients."""
     X = make_dataarray("tall-and-skinny")
     n_modes = N_MODES
@@ -184,7 +188,7 @@ def test_orthogonality(algorithm):
     ), "time_coeffs @ time_coeffs.T is not close to np.diag(energy)"
 
 
-def test_time_dimension_handling():
+def test_time_dimension_handling() -> None:
     """Test that POD correctly handles the time_dimension parameter
     by transposing if necessary."""
     X = make_dataarray("short-and-fat", time_dim_pos=0)
@@ -209,7 +213,7 @@ def test_time_dimension_handling():
     assert "space" not in pod.time_coeffs.coords
 
 
-def test_remove_mean():
+def test_remove_mean() -> None:
     X = make_dataarray("tall-and-skinny")
     n_modes = N_MODES
 
@@ -227,7 +231,7 @@ def test_remove_mean():
     ), "Expected the mean of the reconstructed fluctuations to be close to zero"
 
 
-def test_energy_calculation():
+def test_energy_calculation() -> None:
     """Test that the 'energy' property returns the eigenvalues of the
     spatial covariance matrix, computed via the snapshot method."""
     X = make_dataarray("tall-and-skinny", time_dim_pos=1)
@@ -245,7 +249,7 @@ def test_energy_calculation():
     assert np.allclose(pod.energy, ref_eigenvalues, rtol=1e-3)
 
 
-def test_explained_energy_ratio_matches_full_svd():
+def test_explained_energy_ratio_matches_full_svd() -> None:
     """Test that the energy ratios match `s_i**2 / sum_j s_j**2` obtained
     from a full NumPy SVD of the same preprocessed matrix."""
     X = make_dataarray("tall-and-skinny", time_dim_pos=1)
@@ -254,6 +258,8 @@ def test_explained_energy_ratio_matches_full_svd():
 
     pod = POD(n_modes=n_modes, svd_algorithm="tsqr", compute_energy_ratio=True)
     pod.fit(X)
+    assert pod.explained_energy_ratio is not None
+    assert pod.energy is not None
     ratio = np.asarray(pod.explained_energy_ratio)
 
     F = (X - X.mean(dim="time")).values / np.sqrt(n_snapshots)
@@ -265,7 +271,7 @@ def test_explained_energy_ratio_matches_full_svd():
     assert np.allclose(ratio, pod.energy / (F**2).sum(), rtol=1e-4)
 
 
-def test_explained_energy_ratio_dominant_uniform_mode():
+def test_explained_energy_ratio_dominant_uniform_mode() -> None:
     """Test that a field dominated by a spatially uniform (bulk) oscillation
     reports the uniform mode as the most energetic one."""
     rng = np.random.default_rng(0)
@@ -299,7 +305,7 @@ def test_explained_energy_ratio_dominant_uniform_mode():
 
 
 @pytest.mark.parametrize("n_modes", [4, 20])
-def test_explained_energy_ratio_sums(n_modes):
+def test_explained_energy_ratio_sums(n_modes: int) -> None:
     """Test that the retained energy ratios sum to less than one, and
     approach one as the number of modes approaches the rank."""
     rng = np.random.default_rng(1)
@@ -321,7 +327,7 @@ def test_explained_energy_ratio_sums(n_modes):
         assert total > 0.999
 
 
-def test_invalid_time_dimension_error():
+def test_invalid_time_dimension_error() -> None:
     """Test that a ValueError is raised for a non-existent time dimension."""
     X = make_dataarray("tall-and-skinny")
     pod = POD(n_modes=5, time_dimension="non_existent_dim")
@@ -331,7 +337,7 @@ def test_invalid_time_dimension_error():
 
 
 @pytest.mark.parametrize("matrix_type", ["tall-and-skinny", "short-and-fat"])
-def test_n_modes_exceeds_max_rank_error(matrix_type):
+def test_n_modes_exceeds_max_rank_error(matrix_type: str) -> None:
     """Test that a ValueError is raised when n_modes is at least
     min(n_spatial_points, n_snapshots), the maximum possible rank."""
     X = make_dataarray(matrix_type)
@@ -348,7 +354,7 @@ def test_n_modes_exceeds_max_rank_error(matrix_type):
 
 
 @pytest.mark.parametrize("matrix_type", ["tall-and-skinny", "short-and-fat"])
-def test_transform(matrix_type):
+def test_transform(matrix_type: str) -> None:
     """Test the transform method projects data onto POD modes correctly."""
     X = make_dataarray(matrix_type)
     n_modes = N_MODES
@@ -369,11 +375,12 @@ def test_transform(matrix_type):
         f"but got {X_t.shape}."
     )
     # For training data, transform should match fitted time coefficients
+    assert pod.time_coeffs is not None
     assert np.allclose(X_t.data, pod.time_coeffs.data, atol=1e-6)
 
 
 @pytest.mark.parametrize("matrix_type", ["tall-and-skinny", "short-and-fat"])
-def test_transform_lazy(matrix_type):
+def test_transform_lazy(matrix_type: str) -> None:
     """Test the transform method with compute=False returns lazy Dask array."""
     X = make_dataarray(matrix_type)
     n_modes = N_MODES
@@ -400,7 +407,7 @@ def test_transform_lazy(matrix_type):
 
 
 @pytest.mark.parametrize("matrix_type", ["tall-and-skinny", "short-and-fat"])
-def test_reconstruct(matrix_type):
+def test_reconstruct(matrix_type: str) -> None:
     """Test the inherited reconstruct method on a POD model."""
     X = make_dataarray(matrix_type)
     n_modes = N_MODES
@@ -415,6 +422,7 @@ def test_reconstruct(matrix_type):
         "Reconstructed snapshot should have numpy ndarray as data, "
         f"got {type(X_r.data)}."
     )
+    assert pod.modes is not None
     assert X_r.shape == (pod.modes.shape[0],), (
         f"Reconstructed snapshot should have shape ({pod.modes.shape[0]},), "
         f"got {X_r.shape}."
@@ -425,7 +433,7 @@ def test_reconstruct(matrix_type):
 
 
 @pytest.mark.parametrize("remove_mean", [True, False])
-def test_reconstruct_original_scale(remove_mean):
+def test_reconstruct_original_scale(remove_mean: bool) -> None:
     """Test that reconstruct() undoes the mean removal and 1/sqrt(N)
     scaling applied during fit(), recovering the original-scale data.
 
@@ -456,7 +464,7 @@ def test_reconstruct_original_scale(remove_mean):
         )
 
 
-def test_compute_methods():
+def test_compute_methods() -> None:
     """Test that the `compute_*` convenience methods work."""
     n_modes = 5
     pod = POD(
@@ -469,18 +477,27 @@ def test_compute_methods():
     X = make_dataarray("tall-and-skinny")
     pod.fit(X)
 
-    assert isinstance(pod.modes.data, da.Array)
-    assert isinstance(pod.time_coeffs.data, da.Array)
-    assert isinstance(pod.explained_energy_ratio, da.Array)
+    assert pod.modes is not None
+    assert pod.time_coeffs is not None
+    assert pod.explained_energy_ratio is not None
+    modes_data: object = pod.modes.data
+    time_coeffs_data: object = pod.time_coeffs.data
+    energy_ratio: object = pod.explained_energy_ratio
+    assert isinstance(modes_data, da.Array)
+    assert isinstance(time_coeffs_data, da.Array)
+    assert isinstance(energy_ratio, da.Array)
 
     pod.compute_modes()
-    assert isinstance(pod.modes.data, np.ndarray)
+    modes_data = pod.modes.data
+    assert isinstance(modes_data, np.ndarray)
 
     pod.compute_time_coeffs()
-    assert isinstance(pod.time_coeffs.data, np.ndarray)
+    time_coeffs_data = pod.time_coeffs.data
+    assert isinstance(time_coeffs_data, np.ndarray)
 
     pod.compute_energy_ratio()
-    assert isinstance(pod.explained_energy_ratio, np.ndarray)
+    energy_ratio = pod.explained_energy_ratio
+    assert isinstance(energy_ratio, np.ndarray)
 
 
 # ──────────────────────────────────────────────────────────────
@@ -510,7 +527,7 @@ def _make_secondary_dataarray(
     return xr.DataArray(data, dims=dims, coords=coords)
 
 
-def test_extended_pod_basic_shape():
+def test_extended_pod_basic_shape() -> None:
     """Test that extended_pod returns the correct shape and type."""
     X = make_dataarray("tall-and-skinny")
     n_time = X.sizes["time"]
@@ -542,7 +559,7 @@ def test_extended_pod_basic_shape():
     ), "Expected 'components' in coords of extended POD modes."
 
 
-def test_extended_pod_same_spatial_dim():
+def test_extended_pod_same_spatial_dim() -> None:
     """Test extended_pod when the secondary field has the same spatial
     dimension name as the primary field."""
     X = make_dataarray("tall-and-skinny")
@@ -565,7 +582,7 @@ def test_extended_pod_same_spatial_dim():
     ), f"Expected dims ('space', 'components'), got {chi.dims}."
 
 
-def test_extended_pod_transposed_input():
+def test_extended_pod_transposed_input() -> None:
     """Test that extended_pod correctly handles an input array where
     the time dimension is along the rows."""
     X = make_dataarray("tall-and-skinny")
@@ -588,7 +605,7 @@ def test_extended_pod_transposed_input():
     ), f"Expected dims ('space_c', 'components'), got {chi.dims}."
 
 
-def test_extended_pod_lazy():
+def test_extended_pod_lazy() -> None:
     """Test extended_pod with compute=False returns a lazy Dask-backed array."""
     X = make_dataarray("tall-and-skinny")
     n_time = X.sizes["time"]
@@ -617,7 +634,7 @@ def test_extended_pod_lazy():
     ), "Lazy and eager extended POD results should match."
 
 
-def test_extended_pod_formula():
+def test_extended_pod_formula() -> None:
     """Test the extended POD formula against a direct NumPy reference
     implementation following Boree (2003)."""
     np.random.seed(42)
@@ -648,6 +665,8 @@ def test_extended_pod_formula():
     # Reference: chi_j = (1/(lambda_j * N)) * sum_i(a_ij * c_i')
     C_fluc = C_np - C_np.mean(axis=1, keepdims=True)
     # Reconstruct the actual (unscaled) time coefficients
+    assert pod.time_coeffs is not None
+    assert pod.energy is not None
     time_coeffs_stored = pod.time_coeffs.data  # (n_modes, n_time)
     scale_factor = pod._scale_factor
     a_actual = scale_factor * time_coeffs_stored  # (n_modes, n_time)
@@ -662,7 +681,7 @@ def test_extended_pod_formula():
     ), "Extended POD modes do not match the reference implementation."
 
 
-def test_extended_pod_not_fitted_error():
+def test_extended_pod_not_fitted_error() -> None:
     """Test that calling extended_pod before fit raises RuntimeError."""
     pod = POD(n_modes=5)
     C = _make_secondary_dataarray(100, 50)
@@ -670,7 +689,7 @@ def test_extended_pod_not_fitted_error():
         pod.extended_pod(C)
 
 
-def test_extended_pod_wrong_time_dim_error():
+def test_extended_pod_wrong_time_dim_error() -> None:
     """Test that extended_pod raises ValueError when time dim is missing."""
     X = make_dataarray("tall-and-skinny")
     pod = POD(n_modes=N_MODES)
@@ -684,7 +703,7 @@ def test_extended_pod_wrong_time_dim_error():
         pod.extended_pod(C)
 
 
-def test_extended_pod_snapshot_mismatch_error():
+def test_extended_pod_snapshot_mismatch_error() -> None:
     """Test that extended_pod raises ValueError for mismatched snapshot count."""
     X = make_dataarray("tall-and-skinny")
     n_time = X.sizes["time"]
@@ -696,7 +715,7 @@ def test_extended_pod_snapshot_mismatch_error():
         pod.extended_pod(C)
 
 
-def test_extended_pod_time_coord_mismatch_error():
+def test_extended_pod_time_coord_mismatch_error() -> None:
     """Test that extended_pod raises ValueError when time coordinates
     do not match (non-simultaneous measurement)."""
     X = make_dataarray("tall-and-skinny")
@@ -718,7 +737,7 @@ def test_extended_pod_time_coord_mismatch_error():
         pod.extended_pod(C)
 
 
-def test_extended_pod_remove_mean_false():
+def test_extended_pod_remove_mean_false() -> None:
     """Test extended_pod with remove_mean=False skips mean removal."""
     X = make_dataarray("tall-and-skinny")
     n_time = X.sizes["time"]
@@ -739,7 +758,7 @@ def test_extended_pod_remove_mean_false():
 
 
 @pytest.mark.parametrize("matrix_type", ["tall-and-skinny", "short-and-fat"])
-def test_extended_pod_different_matrix_types(matrix_type):
+def test_extended_pod_different_matrix_types(matrix_type: str) -> None:
     """Test extended_pod works for different matrix geometries."""
     X = make_dataarray(matrix_type)
     n_time = X.sizes["time"]

@@ -25,7 +25,7 @@ config.set(stack_coord_name=stack_coord_name)
 
 
 @pytest.mark.parametrize("X", [data_generator.da, data_generator.ds])
-def test_variable_spatial_stack(X: xr.DataArray | xr.Dataset):
+def test_variable_spatial_stack(X: xr.DataArray | xr.Dataset) -> None:
     """Test for the variable_spatial_stack function."""
     # check that the output is a xarray DataArray
     X_stacked = variable_spatial_stack(X, dims=("x", "y", "z"))
@@ -68,7 +68,7 @@ def test_variable_spatial_stack(X: xr.DataArray | xr.Dataset):
 
 
 @pytest.mark.parametrize("X", [data_generator.da, data_generator.ds])
-def test_standard_scaler(X: xr.DataArray | xr.Dataset):
+def test_standard_scaler(X: xr.DataArray | xr.Dataset) -> None:
     """Test for the StandardScaler class."""
     scaler = StandardScaler()
     X_scaled = scaler(X, with_std=True)
@@ -109,17 +109,16 @@ def test_standard_scaler(X: xr.DataArray | xr.Dataset):
 
 @pytest.mark.parametrize("generator", [data_generator, signal_generator])
 @pytest.mark.parametrize("d", [2, 3])
-def test_hankel_preprocessing(generator: DataGenerator | SignalGenerator, d: int):
+def test_hankel_preprocessing(
+    generator: DataGenerator | SignalGenerator, d: int
+) -> None:
     """Test for the hankel_preprocessing function."""
     if isinstance(generator, DataGenerator):
         X = generator.da.chunk("auto")  # convert to Dask-backed DataArray
         # stack into single spatial dimension, called stack_coord_name
         X = variable_spatial_stack(X, dims=("x", "y", "z"))
-    elif isinstance(generator, SignalGenerator):
-        X = generator.da.rename({"x": stack_coord_name})
     else:
-        msg = "Input must be an instance of DataGenerator or SignalGenerator."
-        raise ValueError(msg)
+        X = generator.da.rename({"x": stack_coord_name})
 
     X = X.transpose(stack_coord_name, "time")
     n_samples, n_snapshots = X.shape
@@ -132,10 +131,11 @@ def test_hankel_preprocessing(generator: DataGenerator | SignalGenerator, d: int
     expected_coords = list(X.coords)
     expected_coords.append(hankel_coord_name)
     actual_coords = list(X_delayed.coords)
-    expected_coords, actual_coords = sorted(expected_coords), sorted(actual_coords)
+    expected_coord_names = sorted(map(str, expected_coords))
+    actual_coord_names = sorted(map(str, actual_coords))
     assert (
-        actual_coords == expected_coords
-    ), f"Expected coordinates are {expected_coords}, but got {actual_coords}."
+        actual_coord_names == expected_coord_names
+    ), f"Expected coordinates are {expected_coord_names}, but got {actual_coord_names}."
 
     expected_shape = (d * n_samples, n_snapshots - d + 1)
     assert (

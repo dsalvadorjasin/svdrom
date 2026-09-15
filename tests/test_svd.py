@@ -58,7 +58,7 @@ def make_dataarray(matrix_type: str) -> xr.DataArray:
 
 
 @pytest.mark.parametrize("algorithm", ["tsqr", "randomized"])
-def test_basic(algorithm):
+def test_basic(algorithm: str) -> None:
     """Test basic functionality of TruncatedSVD."""
     n_components = 10
     tsvd = TruncatedSVD(
@@ -108,7 +108,7 @@ def test_basic(algorithm):
 
 @pytest.mark.parametrize("matrix_type", ["tall-and-skinny", "short-and-fat", "square"])
 @pytest.mark.parametrize("algorithm", ["tsqr", "randomized"])
-def test_matrix_types(matrix_type, algorithm):
+def test_matrix_types(matrix_type: str, algorithm: str) -> None:
     """Test TruncatedSVD with different matrix shapes."""
     X = make_dataarray(matrix_type)
     n_samples, n_features = X.shape
@@ -159,7 +159,7 @@ def test_matrix_types(matrix_type, algorithm):
 
 @pytest.mark.parametrize("matrix_type", ["tall-and-skinny", "short-and-fat", "square"])
 @pytest.mark.parametrize("algorithm", ["tsqr", "randomized"])
-def test_n_components_exceeds_rank(matrix_type, algorithm):
+def test_n_components_exceeds_rank(matrix_type: str, algorithm: str) -> None:
     """n_components must be below the maximum theoretical rank,
     min(n_samples, n_features). Requesting n_components equal to the
     smaller dimension of a short-and-fat matrix used to mislabel the
@@ -172,7 +172,7 @@ def test_n_components_exceeds_rank(matrix_type, algorithm):
         tsvd.fit(X)
 
 
-def test_singular_vectors_labeled_by_kind():
+def test_singular_vectors_labeled_by_kind() -> None:
     """The caller tells `_singular_vectors_to_dataarray` whether the
     vectors are left (`u`) or right (`v`), so an ambiguously-shaped
     (square) input is labeled correctly regardless of its shape.
@@ -202,7 +202,7 @@ def test_singular_vectors_labeled_by_kind():
 
 
 @pytest.mark.parametrize("algorithm", ["tsqr", "randomized"])
-def test_orthogonality(algorithm):
+def test_orthogonality(algorithm: str) -> None:
     """Test orthogonality of u and v matrices."""
     X = make_dataarray("tall-and-skinny")
     n_components = 10
@@ -223,7 +223,7 @@ def test_orthogonality(algorithm):
 
 
 @pytest.mark.parametrize("matrix_type", ["tall-and-skinny", "short-and-fat"])
-def test_transform(matrix_type):
+def test_transform(matrix_type: str) -> None:
     """Test the transform method of TruncatedSVD."""
     X = make_dataarray(matrix_type)
     n_components = 10
@@ -247,7 +247,7 @@ def test_transform(matrix_type):
 
 
 @pytest.mark.parametrize("matrix_type", ["tall-and-skinny", "short-and-fat"])
-def test_reconstruct(matrix_type):
+def test_reconstruct(matrix_type: str) -> None:
     """Test the reconstruct method of TruncatedSVD."""
     X = make_dataarray(matrix_type)
     n_components = 10
@@ -272,7 +272,7 @@ def test_reconstruct(matrix_type):
 
 
 @pytest.mark.parametrize("matrix_type", ["tall-and-skinny", "short-and-fat"])
-def test_reconstruct_full(matrix_type):
+def test_reconstruct_full(matrix_type: str) -> None:
     """``reconstruct()`` with no argument returns the full rank-k
     approximation ``U @ diag(S) @ V`` with the original dims."""
     X = make_dataarray(matrix_type)
@@ -292,7 +292,7 @@ def test_reconstruct_full(matrix_type):
     ), "Full reconstruction does not match U @ diag(S) @ V."
 
 
-def test_reconstruct_index_slice():
+def test_reconstruct_index_slice() -> None:
     """An integer-bounded slice subsets along ``snapshot_dim`` via ``isel``."""
     X = make_dataarray("tall-and-skinny")
     n_components = 10
@@ -308,7 +308,7 @@ def test_reconstruct_index_slice():
     assert np.array_equal(X_r[time_coord_name].values, np.arange(5))
 
 
-def test_reconstruct_label_slice():
+def test_reconstruct_label_slice() -> None:
     """A string-bounded slice subsets along ``snapshot_dim`` via ``sel``."""
     X = make_dataarray("tall-and-skinny")
     n_features = X.sizes[time_coord_name]
@@ -324,7 +324,7 @@ def test_reconstruct_label_slice():
     assert list(X_r[time_coord_name].values) == list(time_labels[:5])
 
 
-def test_reconstruct_str_label():
+def test_reconstruct_str_label() -> None:
     """A bare string argument selects matching label(s) along ``snapshot_dim``."""
     X = make_dataarray("tall-and-skinny")
     n_features = X.sizes[time_coord_name]
@@ -339,7 +339,7 @@ def test_reconstruct_str_label():
     assert samples_coord_name in X_r.dims
 
 
-def test_reconstruct_along_u_dim():
+def test_reconstruct_along_u_dim() -> None:
     """``snapshot_dim`` lookups fall back to ``u`` when not in ``v``."""
     X = make_dataarray("tall-and-skinny")
     n_components = 10
@@ -354,7 +354,7 @@ def test_reconstruct_along_u_dim():
     assert time_coord_name in X_r.dims
 
 
-def test_reconstruct_over_memory_limit_returns_chunked_dask():
+def test_reconstruct_over_memory_limit_returns_chunked_dask() -> None:
     """When the estimated reconstruction exceeds ``memory_limit_bytes``, the
     result is a lazy, chunked Dask array even though ``u``/``v`` are small and
     NumPy-backed. Chunking follows ``snapshot_dim`` while other dims are kept
@@ -375,6 +375,7 @@ def test_reconstruct_over_memory_limit_returns_chunked_dask():
     assert isinstance(
         X_r.data, da.Array
     ), "Over-limit reconstruction should be Dask-backed."
+    assert X_r.chunks is not None
     samples_axis = X_r.dims.index(samples_coord_name)
     time_axis = X_r.dims.index(time_coord_name)
     assert (
@@ -390,7 +391,7 @@ def test_reconstruct_over_memory_limit_returns_chunked_dask():
     ), "Lazy over-limit reconstruction must match the eager one."
 
 
-def test_reconstruct_over_memory_limit_chunks_u_snapshot_dim():
+def test_reconstruct_over_memory_limit_chunks_u_snapshot_dim() -> None:
     """Over the memory limit with ``snapshot_dim`` living in ``u``, chunking
     follows the ``u`` snapshot axis while the feature axis is kept whole.
     """
@@ -402,6 +403,7 @@ def test_reconstruct_over_memory_limit_chunks_u_snapshot_dim():
         X_r = tsvd.reconstruct(memory_limit_bytes=1, snapshot_dim=samples_coord_name)
 
     assert isinstance(X_r.data, da.Array)
+    assert X_r.chunks is not None
     samples_axis = X_r.dims.index(samples_coord_name)
     time_axis = X_r.dims.index(time_coord_name)
     assert (
@@ -412,7 +414,7 @@ def test_reconstruct_over_memory_limit_chunks_u_snapshot_dim():
     ), "The non-snapshot (feature) axis should be kept whole."
 
 
-def test_reconstruct_single_snapshot_over_limit_returns_numpy():
+def test_reconstruct_single_snapshot_over_limit_returns_numpy() -> None:
     """A single-snapshot selection (int index) drops ``snapshot_dim``, so it
     is always computed eagerly and returned NumPy-backed, even when
     ``memory_limit_bytes`` is tiny (which would otherwise force the Dask path).
@@ -430,7 +432,7 @@ def test_reconstruct_single_snapshot_over_limit_returns_numpy():
     assert samples_coord_name in X_r.dims
 
 
-def test_reconstruct_under_memory_limit_returns_numpy():
+def test_reconstruct_under_memory_limit_returns_numpy() -> None:
     """Under ``memory_limit_bytes`` the reconstruction is computed eagerly and
     returned NumPy-backed.
     """
@@ -444,7 +446,7 @@ def test_reconstruct_under_memory_limit_returns_numpy():
     ), "Under-limit reconstruction should be NumPy-backed."
 
 
-def test_reconstruct_under_limit_computes_lazy_factors():
+def test_reconstruct_under_limit_computes_lazy_factors() -> None:
     """Under the limit, a lazy (Dask-backed) factorisation is still computed to
     a NumPy-backed reconstruction.
     """
@@ -459,7 +461,7 @@ def test_reconstruct_under_limit_computes_lazy_factors():
     ), "Under-limit reconstruction should be computed to NumPy."
 
 
-def test_reconstruct_mixed_bound_slice_raises():
+def test_reconstruct_mixed_bound_slice_raises() -> None:
     """Slices mixing int and str bounds raise ``TypeError``."""
     X = make_dataarray("tall-and-skinny")
     tsvd = TruncatedSVD(n_components=10)
@@ -469,7 +471,7 @@ def test_reconstruct_mixed_bound_slice_raises():
         tsvd.reconstruct(slice(0, "2020-01-05"))
 
 
-def test_reconstruct_unknown_label_raises():
+def test_reconstruct_unknown_label_raises() -> None:
     """An unknown label raises ``KeyError``."""
     X = make_dataarray("tall-and-skinny")
     n_features = X.sizes[time_coord_name]
@@ -482,7 +484,7 @@ def test_reconstruct_unknown_label_raises():
         tsvd.reconstruct("not-a-real-label")
 
 
-def test_reconstruct_unknown_dim_raises():
+def test_reconstruct_unknown_dim_raises() -> None:
     """An unknown ``snapshot_dim`` raises ``ValueError``."""
     X = make_dataarray("tall-and-skinny")
     tsvd = TruncatedSVD(n_components=10)
@@ -492,14 +494,14 @@ def test_reconstruct_unknown_dim_raises():
         tsvd.reconstruct(0, snapshot_dim="not-a-dim")
 
 
-def test_reconstruct_not_fitted_raises():
+def test_reconstruct_not_fitted_raises() -> None:
     """``reconstruct`` on an unfitted model raises ``RuntimeError``."""
     tsvd = TruncatedSVD(n_components=10)
     with pytest.raises(RuntimeError):
         tsvd.reconstruct()
 
 
-def test_svd_hankel():
+def test_svd_hankel() -> None:
     """Test that SVD can be performed on a matrix after
     Hankel pre-processing."""
     X = make_dataarray("tall-and-skinny")

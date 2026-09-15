@@ -18,9 +18,11 @@ from svdrom.weather_utils import (
     expand_time_climatology,
 )
 
+DataGeneratorFactory = Callable[..., tuple[xr.DataArray, xr.DataArray]]
+
 
 @pytest.fixture()
-def data_generator() -> Callable:
+def data_generator() -> DataGeneratorFactory:
     """Generate random prediction and groundtruth DataArrays for testing."""
 
     def _factory(
@@ -64,7 +66,7 @@ def data_generator() -> Callable:
 
 @pytest.fixture()
 def probabilistic_prediction_generator(
-    data_generator,
+    data_generator: DataGeneratorFactory,
 ) -> tuple[xr.DataArray, xr.DataArray]:
     """Generate an ensemble of random predictions, and return their
     mean and standard deviation.
@@ -76,9 +78,9 @@ def probabilistic_prediction_generator(
         prediction, _ = data_generator(prediction_seed=None)
         predictions.append(prediction)
 
-    predictions = xr.concat(predictions, dim="ensemble")
-    prediction_mean = predictions.mean("ensemble")
-    predictions_std = predictions.std("ensemble")
+    predictions_da = xr.concat(predictions, dim="ensemble")
+    prediction_mean = predictions_da.mean("ensemble")
+    predictions_std = predictions_da.std("ensemble")
 
     return prediction_mean, predictions_std
 
@@ -91,11 +93,15 @@ def probabilistic_prediction_generator(
         ("latitude", "longitude", "level", "time"),
     ],
 )
-def test_compute_rmse(dims, data_generator):
+def test_compute_rmse(
+    dims: tuple[str, ...],
+    data_generator: DataGeneratorFactory,
+) -> None:
     """Test for the compute_rmse() weather utility function."""
     prediction, groundtruth = data_generator()
     rmse = compute_rmse(groundtruth, prediction, dims=dims, lat_weighting=False)
 
+    expected_out_dims: tuple[str, ...]
     match dims:
         case ("time",):
             expected_out_dims = ("latitude", "longitude", "level")
@@ -126,11 +132,15 @@ def test_compute_rmse(dims, data_generator):
         ("latitude", "longitude", "level", "time"),
     ],
 )
-def test_compute_mae(dims, data_generator):
+def test_compute_mae(
+    dims: tuple[str, ...],
+    data_generator: DataGeneratorFactory,
+) -> None:
     """Test for the compute_mae() weather utility function."""
     prediction, groundtruth = data_generator()
     mae = compute_mae(groundtruth, prediction, dims=dims, lat_weighting=False)
 
+    expected_out_dims: tuple[str, ...]
     match dims:
         case ("time",):
             expected_out_dims = ("latitude", "longitude", "level")
@@ -153,7 +163,10 @@ def test_compute_mae(dims, data_generator):
 
 
 @pytest.mark.parametrize("lat_weighting", [False, True])
-def test_compute_rmse_mae_no_averaging(lat_weighting, data_generator):
+def test_compute_rmse_mae_no_averaging(
+    lat_weighting: bool,
+    data_generator: DataGeneratorFactory,
+) -> None:
     """compute_rmse() and compute_mae() should skip averaging when dims=None."""
     prediction, groundtruth = data_generator()
 
@@ -175,7 +188,11 @@ def test_compute_rmse_mae_no_averaging(lat_weighting, data_generator):
 @pytest.mark.dependency(name="compute_clima")
 @pytest.mark.parametrize("smooth_window", [None, 61])
 @pytest.mark.parametrize("probabilistic", [False, True])
-def test_compute_climatology(data_generator, smooth_window, probabilistic):
+def test_compute_climatology(
+    data_generator: DataGeneratorFactory,
+    smooth_window: int | None,
+    probabilistic: bool,
+) -> None:
     """Test for the compute_climatology() function."""
     _, groundtruth = data_generator()
 
@@ -208,13 +225,16 @@ def test_compute_climatology(data_generator, smooth_window, probabilistic):
 
     if not probabilistic:
         climatology = compute_climatology(groundtruth, smooth_window)
+        assert isinstance(climatology, xr.DataArray)
         _test(climatology)
     else:
-        climatology, climatology_std = compute_climatology(
+        climatology_result = compute_climatology(
             groundtruth,
             smooth_window,
             probabilistic=True,
         )
+        assert isinstance(climatology_result, tuple)
+        climatology, climatology_std = climatology_result
         _test(climatology)
         _test(climatology_std)
 
@@ -222,10 +242,15 @@ def test_compute_climatology(data_generator, smooth_window, probabilistic):
 @pytest.mark.dependency(depends=["compute_clima"], name="expand_time_clima")
 @pytest.mark.parametrize("doy", [slice(1, 60), slice(180, 240), None])
 @pytest.mark.parametrize("year", [2020, 2021, 2023, 2024])
-def test_expand_time_climatology(doy, year, data_generator):
+def test_expand_time_climatology(
+    doy: slice | None,
+    year: int,
+    data_generator: DataGeneratorFactory,
+) -> None:
     """Test for the expand_time_climatology() function."""
     _, groundtruth = data_generator()
     climatology = compute_climatology(groundtruth)
+    assert isinstance(climatology, xr.DataArray)
     if doy is not None:
         climatology = climatology.sel(dayofyear=doy)
     hours = climatology.hour.values
@@ -245,7 +270,9 @@ def test_expand_time_climatology(doy, year, data_generator):
     )
 
 
-def test_compute_energy_spectrum(data_generator):
+def test_compute_energy_spectrum(
+    data_generator: DataGeneratorFactory,
+) -> None:
     """Test for the compute_energy_spectrum() function."""
     pytest.importorskip(
         "weatherbench2.derived_variables",
@@ -267,11 +294,11 @@ def test_compute_energy_spectrum(data_generator):
 @pytest.mark.parametrize("dims", [("latitude", "longitude"), "time", None])
 @pytest.mark.parametrize("lat_weighting", [True, False])
 def test_compute_crps_gaussian(
-    data_generator,
-    probabilistic_prediction_generator,
-    dims,
-    lat_weighting,
-):
+    data_generator: DataGeneratorFactory,
+    probabilistic_prediction_generator: tuple[xr.DataArray, xr.DataArray],
+    dims: tuple[str, ...] | str | None,
+    lat_weighting: bool,
+) -> None:
     """Test for the compute_crps_gaussian() function."""
     pytest.importorskip(
         "properscoring",
@@ -306,11 +333,14 @@ def test_compute_crps_gaussian(
 
 
 @pytest.mark.dependency(depends=["compute_clima", "expand_time_clima"])
-def test_compute_acc(data_generator):
+def test_compute_acc(
+    data_generator: DataGeneratorFactory,
+) -> None:
     """Test for the compute_acc() function."""
     prediction, ground_truth = data_generator()
     prediction = prediction.sel(time="2019")
     climatology = compute_climatology(ground_truth.sel(time=slice("2016", "2018")))
+    assert isinstance(climatology, xr.DataArray)
     ground_truth = ground_truth.sel(time="2019")
     climatology = expand_time_climatology(climatology, year=2019)
 
@@ -345,7 +375,10 @@ def test_compute_acc(data_generator):
 
 
 @pytest.mark.parametrize("func", [compute_rmse, compute_mae])
-def test_rmse_mae_lat_weighting(func, data_generator):
+def test_rmse_mae_lat_weighting(
+    func: Callable[..., xr.DataArray],
+    data_generator: DataGeneratorFactory,
+) -> None:
     """compute_rmse()/compute_mae() apply latitude weighting when requested."""
     prediction, groundtruth = data_generator()
     score = func(groundtruth, prediction, lat_weighting=True)
@@ -363,7 +396,10 @@ def test_rmse_mae_lat_weighting(func, data_generator):
 
 
 @pytest.mark.parametrize("func", [compute_rmse, compute_mae])
-def test_rmse_mae_lat_weighting_missing_latitude(func, data_generator):
+def test_rmse_mae_lat_weighting_missing_latitude(
+    func: Callable[..., xr.DataArray],
+    data_generator: DataGeneratorFactory,
+) -> None:
     """compute_rmse()/compute_mae() raise when latitude is missing but
     latitude weighting is requested."""
     prediction, groundtruth = data_generator()
@@ -375,7 +411,10 @@ def test_rmse_mae_lat_weighting_missing_latitude(func, data_generator):
 
 
 @pytest.mark.parametrize("func", [compute_rmse, compute_mae])
-def test_rmse_mae_misaligned_grid(func, data_generator):
+def test_rmse_mae_misaligned_grid(
+    func: Callable[..., xr.DataArray],
+    data_generator: DataGeneratorFactory,
+) -> None:
     """compute_rmse()/compute_mae() raise when inputs are on different grids."""
     prediction, groundtruth = data_generator()
     prediction = prediction.isel(latitude=slice(0, -1))
@@ -384,7 +423,9 @@ def test_rmse_mae_misaligned_grid(func, data_generator):
         func(groundtruth, prediction)
 
 
-def test_compute_climatology_missing_time(data_generator):
+def test_compute_climatology_missing_time(
+    data_generator: DataGeneratorFactory,
+) -> None:
     """compute_climatology() raises when the input lacks a time dimension."""
     _, groundtruth = data_generator()
     no_time = groundtruth.isel(time=0)
@@ -393,7 +434,9 @@ def test_compute_climatology_missing_time(data_generator):
         compute_climatology(no_time)
 
 
-def test_expand_time_climatology_missing_dims(data_generator):
+def test_expand_time_climatology_missing_dims(
+    data_generator: DataGeneratorFactory,
+) -> None:
     """expand_time_climatology() raises when dayofyear/hour dims are missing."""
     _, groundtruth = data_generator()
 
@@ -401,7 +444,9 @@ def test_expand_time_climatology_missing_dims(data_generator):
         expand_time_climatology(groundtruth, year=2020)
 
 
-def test_compute_energy_spectrum_requires_numpy(data_generator):
+def test_compute_energy_spectrum_requires_numpy(
+    data_generator: DataGeneratorFactory,
+) -> None:
     """compute_energy_spectrum() raises when the input is not numpy-backed."""
     pytest.importorskip(
         "weatherbench2.derived_variables",
@@ -415,8 +460,9 @@ def test_compute_energy_spectrum_requires_numpy(data_generator):
 
 
 def test_compute_crps_requires_numpy(
-    data_generator, probabilistic_prediction_generator
-):
+    data_generator: DataGeneratorFactory,
+    probabilistic_prediction_generator: tuple[xr.DataArray, xr.DataArray],
+) -> None:
     """compute_crps_gaussian() raises when any input is not numpy-backed."""
     pytest.importorskip(
         "properscoring",
@@ -432,8 +478,9 @@ def test_compute_crps_requires_numpy(
 
 
 def test_compute_crps_non_positive_std(
-    data_generator, probabilistic_prediction_generator
-):
+    data_generator: DataGeneratorFactory,
+    probabilistic_prediction_generator: tuple[xr.DataArray, xr.DataArray],
+) -> None:
     """compute_crps_gaussian() raises when the std array is not strictly positive."""
     pytest.importorskip(
         "properscoring",
@@ -448,8 +495,9 @@ def test_compute_crps_non_positive_std(
 
 
 def test_compute_crps_misaligned_grid(
-    data_generator, probabilistic_prediction_generator
-):
+    data_generator: DataGeneratorFactory,
+    probabilistic_prediction_generator: tuple[xr.DataArray, xr.DataArray],
+) -> None:
     """compute_crps_gaussian() raises when inputs are on different grids."""
     pytest.importorskip(
         "properscoring",
@@ -463,7 +511,9 @@ def test_compute_crps_misaligned_grid(
         compute_crps_gaussian(groundtruth, prediction_mean, prediction_std)
 
 
-def test_compute_acc_misaligned_grid(data_generator):
+def test_compute_acc_misaligned_grid(
+    data_generator: DataGeneratorFactory,
+) -> None:
     """compute_acc() raises when inputs are on different grids."""
     prediction, groundtruth = data_generator()
     climatology = xr.zeros_like(groundtruth)
@@ -473,7 +523,9 @@ def test_compute_acc_misaligned_grid(data_generator):
         compute_acc(groundtruth, prediction, climatology)
 
 
-def test_compute_acc_missing_lat_lon(data_generator):
+def test_compute_acc_missing_lat_lon(
+    data_generator: DataGeneratorFactory,
+) -> None:
     """compute_acc() raises when latitude/longitude dims are absent."""
     prediction, groundtruth = data_generator()
     rename = {"latitude": "lat", "longitude": "lon"}
