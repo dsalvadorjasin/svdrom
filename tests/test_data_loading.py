@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import shutil
+from collections.abc import Callable
+from typing import Any, ClassVar
 
 import netCDF4  # noqa: F401
 import pytest
@@ -33,8 +35,11 @@ class TestDataLoading:
             round-trip through Zarr, NetCDF4 and HDF5 with Xarray.
     """
 
+    data_dir: ClassVar[str]
+    data_generator: ClassVar[DataGenerator]
+
     @classmethod
-    def setup_class(cls):
+    def setup_class(cls) -> None:
         cls.data_dir = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "test_data", "data_loading"
         )
@@ -46,11 +51,11 @@ class TestDataLoading:
         os.makedirs(cls.data_dir)
 
     @classmethod
-    def teardown_class(cls):
+    def teardown_class(cls) -> None:
         shutil.rmtree(cls.data_dir)
 
     @pytest.fixture(autouse=True)
-    def _make_test_data(self):
+    def _make_test_data(self) -> None:
         print("Generating synthetic Xarray.DataSet...")
         self.data_generator.generate_dataset()
         print("Generating synthetic Xarray.DataArray...")
@@ -83,7 +88,14 @@ class TestDataLoading:
             ),
         ],
     )
-    def test_open_formats(self, filetype, ds_ext, da_ext, ds_save, da_save):
+    def test_open_formats(
+        self,
+        filetype: str,
+        ds_ext: str,
+        da_ext: str,
+        ds_save: Callable[[xr.Dataset, str], Any],
+        da_save: Callable[[xr.DataArray, str], Any],
+    ) -> None:
         ds_path = os.path.join(self.data_dir, ds_ext)
         da_path = os.path.join(self.data_dir, da_ext)
         ds_save(self.data_generator.ds, ds_path)

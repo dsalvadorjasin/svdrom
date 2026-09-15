@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 import pytest
 
 import svdrom.config as config
 
 
 @pytest.fixture(autouse=True)
-def _restore_config():
+def _restore_config() -> Iterator[None]:
     """Restore the editable config to its default after each test."""
     original = dict(config._editable_config)
     yield
@@ -14,7 +16,7 @@ def _restore_config():
     config._editable_config.update(original)
 
 
-def test_get_whole_config():
+def test_get_whole_config() -> None:
     """get() without a key returns the full merged config."""
     config.set(stack_coord_name="samples")
     cfg = config.get()
@@ -23,31 +25,31 @@ def test_get_whole_config():
     assert cfg["stack_coord_name"] == "samples"
 
 
-def test_get_single_key():
+def test_get_single_key() -> None:
     """get(key) returns the value for the given key."""
     config.set(stack_coord_name="samples")
     assert config.get("stack_coord_name") == "samples"
 
 
-def test_get_unknown_key_returns_none():
+def test_get_unknown_key_returns_none() -> None:
     """get() with an unknown key returns None."""
     assert config.get("does_not_exist") is None
 
 
-def test_set_editable_key():
+def test_set_editable_key() -> None:
     """set() updates an editable config key."""
     config.set(stack_coord_name="space")
     assert config.get("stack_coord_name") == "space"
 
 
 @pytest.mark.parametrize("value", ["", 123, None])
-def test_set_stack_coord_name_invalid(value):
+def test_set_stack_coord_name_invalid(value: object) -> None:
     """set() rejects a non-string or empty stack_coord_name."""
     with pytest.raises(ValueError, match="non-empty string"):
         config.set(stack_coord_name=value)
 
 
-def test_set_unknown_key_raises():
+def test_set_unknown_key_raises() -> None:
     """set() raises KeyError for an unknown editable config key."""
     with pytest.raises(KeyError, match="Unknown editable config key"):
         config.set(unknown_key="value")

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import xarray as xr
 from numpy.lib.stride_tricks import sliding_window_view
@@ -38,15 +40,21 @@ class DataGenerator:
             n_components is -1 (default), all SVD components are returned.
     """
 
+    ds: xr.Dataset
+    da: xr.DataArray
+    u: xr.DataArray
+    s: np.ndarray
+    v: xr.DataArray
+
     def __init__(
         self,
         x: np.ndarray | None = None,
         y: np.ndarray | None = None,
         z: np.ndarray | None = None,
         t: np.ndarray | None = None,
-        vars: list | None = None,
+        vars: list[str] | None = None,
         seed: int | None = 1234,
-    ):
+    ) -> None:
         self.x = x if x is not None else np.arange(0, 10)
         self.y = y if y is not None else np.arange(0, 10)
         self.z = z if z is not None else np.arange(0, 5)
@@ -58,8 +66,8 @@ class DataGenerator:
         self.vars = vars if vars else ["U", "V", "W"]
         self.rng = np.random.default_rng(seed)
 
-    def generate_dataset(self):
-        data = {}
+    def generate_dataset(self) -> None:
+        data: dict[str, Any] = {}
         for var in self.vars:
             data[var] = {}
             data[var]["data"] = self.rng.random(
@@ -72,12 +80,12 @@ class DataGenerator:
         data["time"] = {"data": self.t, "dims": ("time")}
         self.ds = xr.Dataset.from_dict(data)
 
-    def generate_dataarray(self, var: str | None = None):
+    def generate_dataarray(self, var: str | None = None) -> None:
         var = var if var else self.vars[0]
         if var not in self.vars:
             msg = f"{var} not in variable list: {self.vars}."
             raise ValueError(msg)
-        data = {}
+        data: dict[str, Any] = {}
         data["coords"] = {
             "x": {"dims": ("x"), "data": self.x},
             "y": {"dims": ("y"), "data": self.y},
@@ -91,7 +99,7 @@ class DataGenerator:
         data["name"] = var
         self.da = xr.DataArray.from_dict(data)
 
-    def generate_svd_results(self, n_components: int = -1):
+    def generate_svd_results(self, n_components: int = -1) -> None:
         n_components = len(self.t) if n_components == -1 else n_components
         self.generate_dataarray()
         da = self.da.stack(samples=("x", "y", "z"))
@@ -101,7 +109,7 @@ class DataGenerator:
         u, s, v = u[:, :n_components], s[:n_components], v[:n_components, :]
 
         dims = ["samples", "components"]
-        coords = {}
+        coords: dict[str, Any] = {}
         coords["samples"] = da.coords["samples"]
         coords["components"] = np.arange(n_components)
         self.u = xr.DataArray(u, dims=dims, coords=coords)
@@ -116,15 +124,19 @@ class DataGenerator:
 
 
 class SignalGenerator:
+    u: xr.DataArray
+    s: np.ndarray
+    v: xr.DataArray
+
     def __init__(
         self,
-        nx=501,
-        nt=201,
-        x_min=-5,
-        x_max=5,
-        t_min=0,
-        t_max=50,
-    ):
+        nx: int = 501,
+        nt: int = 201,
+        x_min: float = -5,
+        x_max: float = 5,
+        t_min: float = 0,
+        t_max: float = 50,
+    ) -> None:
         """A class to generate synthetic coherent spatio-temporal signals
         for testing purposes, stored in a NumPy-backed Xarray DataArray.
 
@@ -146,7 +158,7 @@ class SignalGenerator:
         self.x = np.linspace(x_min, x_max, nx)
         self.t = np.linspace(t_min, t_max, nt)
         self.X, self.T = np.meshgrid(self.x, self.t)
-        data = {}
+        data: dict[str, Any] = {}
         data["coords"] = {
             "x": {"dims": ("x"), "data": self.x},
             "time": {"dims": ("time"), "data": self.t},
@@ -155,7 +167,7 @@ class SignalGenerator:
         data["data"] = np.zeros(self.X.shape)
         data["name"] = "signal"
         self.da = xr.DataArray.from_dict(data)
-        self.components = []
+        self.components: list[dict[str, Any]] = []
 
     def add_sinusoid1(
         self, a: float = 1, k: float = 0.1, omega: float = 1, gamma: float = 0
@@ -248,7 +260,7 @@ class SignalGenerator:
             .reshape(X.shape[1] - delay + 1, -1)
             .T
         )
-        data = {}
+        data: dict[str, Any] = {}
         data["coords"] = {
             "x": {"dims": ("x"), "data": np.tile(self.x, delay)},
             "time": {"dims": ("time"), "data": self.t[: -delay + 1]},
